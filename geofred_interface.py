@@ -37,28 +37,27 @@ class Wrangler(object):
         return tmp.reset_index()
 
     @staticmethod
-    def mean_replace(dataframe, threshold):
-        """Drops threshold NaN cols and replaces remaining NaNs with average values.
+    def replace_nan(dataframe, median=False):
+        """Replaces remaining NaNs with average/median values.
 
         Args:
             dataframe (pd.DataFrame): to transform
-            threshold (float): max (nans / rows) allowed for a feature
+            median (list[str]): list of dataframe cols to median replace
 
-        Returns: pd.DataFrame, drops nan threshold cols and mean-replaces the rest
+        Returns: pd.DataFrame with replaced nan values
         """
         tmp = dataframe
-        rows = tmp.shape[0]
-        nan_threshold = math.ceil(rows * threshold)
-        nans = tmp.isna().sum()
 
-        drop_cols = list()
-        for col in nans.index:
-            if nans[col] > nan_threshold:
-                drop_cols.append(col)
-        print("Over NaN Threshold, Dropping:", drop_cols)
-        tmp = tmp.drop(columns=drop_cols)
+        if median:
+            tmp_med = tmp[median]
+            tmp_med = tmp_med.fillna(tmp_med.median())
+        
+        tmp = tmp.fillna(tmp.mean())
 
-        return tmp.fillna(tmp.mean())
+        if median:
+            tmp[tmp_med.columns] = tmp_med
+
+        return tmp
 
     @staticmethod
     def normalize_features(dataframe):
@@ -94,8 +93,23 @@ class Wrangler(object):
 
         return tmp[['year', 'county', 'feature', 'value']]
 
+    @staticmethod
+    def drop_years(dataframe, start, end):
+        """Subsets original data based on a start/end year.
 
-def pull_data_from_geodb(geodb, sids):
+        Args:
+            dataframe (pd.DataFrame): dataframe to subset
+            start (int): start year
+            end (int): end year
+        Returns: pd.DataFrame
+        """
+        tmp = dataframe
+        tmp = tmp[(start <= tmp['year'].astype(int)) & (tmp['year'].astype(int) <= end)]
+
+        return tmp
+
+
+def pull_data_from_geodb(geodb, sids, verbose=True):
     """Gets data from the GeoFRED database.
 
     Pulls all the data into two dataframes based
@@ -124,26 +138,6 @@ def pull_data_from_geodb(geodb, sids):
         for col in ['min_date', 'max_date']:
             meta[col] = pd.to_datetime(meta[col]).date()
 
-        # # ensures min date isn't before cutoff start date
-        # if meta['min_date'] < cutoff_start:
-        #     meta['min_date'] = cutoff_start
-        # # if min date starts after Jan 01, change min date to Jan 01 of the 
-        # # next year as this will remove potential for seasonal bias during annualization
-        # elif meta['min_date'] > pd.to_datetime(str(meta['min_date'].year) + "-01-01").date():
-        #     meta['min_date'] = pd.to_datetime(str(meta['min_date'].year + 1) + "-01-01").date()
-
-        # # ensures max date isn't after cutoff end date
-        # if meta['max_date'] > cutoff_end:
-        #     if meta['frequency'] == 'a':
-        #         meta['max_date'] = pd.to_datetime('2017-01-01').date()
-        #     else:
-        #         meta['max_date'] = cutoff_end
-
-        # # checkdate!
-        # if meta['max_date'] < meta['min_date']:
-        #     print(f"  > ALERT: NOT ENOUGH DATA, REMOVING {sid}...")
-        #     continue
-
         print("  > Pulling dataframe...")
         data = geodb['data'](
             series_group=meta['series_group'],
@@ -154,10 +148,18 @@ def pull_data_from_geodb(geodb, sids):
             frequency=meta['frequency'],
             season=meta['season']
         )
-        print(f"  > Min date: {meta['min_date']}")
-        print(f"  > Max date: {meta['max_date']}")
         # swap series id for its feature name (change colname later)
         data['series_id'] = meta['title']
+
+        if verbose:
+            print(f"  > Title: {meta['title']}")
+            print(f"  > Min date: {meta['min_date']}")
+            print(f"  > Max date: {meta['max_date']}")
+            print(f"  > Units: {meta['units']}")
+            print(f"  > Season: {meta['season']}")
+            print(f"  > Frequency: {meta['frequency']}")
+            print(f"  > Region type: {meta['region_type']}")
+
 
         print(f"  > Appending to df_{meta['frequency']}...")
         if meta['frequency'] == 'a':
@@ -181,10 +183,8 @@ def main():
     # most of our features goes through 2018
     series_ids = [
         "EQFXSUBPRIME036061",  # equifax subprime
-        "GCT1501WV",  # high school graduate or higher (percent)
-        "PPAAKY21217A156NCEN",  # Estimated Percent of People of All Ages in Poverty
         "GDPALL17031",  # GDP all industries
-        "S1701ACS024510",  # percent of population below the poverty level
+        "PPAAKY21217A156NCEN",  # Estimated Percent of People of All Ages in Poverty
         "CBR21189KYA647NCEN",  # SNAP Benefits recipients
         "RACEDISPARITY041047",  # Segregation/Integration
         "DP04ACS031031",  # Burdened Households (>30% of their income on their house)
@@ -196,13 +196,14 @@ def main():
 
     df = df_a.append(Wrangler.annualize(df_m))
     df = Wrangler.long_to_wide(df)
-    # df = Wrangler.reduce_to_hpi(df)
-    # df = Wrangler.mean_replace(df, threshold=0.85)
-    # df = Wrangler.normalize_features(df)
+    df = Wrangler.drop_years(df, start=2010, end=2018)
+    df = Wrangler.replace_nan(df, median=
+        ['Gross Domestic Product: All Industries', 'SNAP Benefits Recipients']
+    )
+    df = Wrangler.normalize_features(df)
 
-    # TODO: alter this path for your local env
     print("Exporting clean data...")
-    my_path = "/home/adam/github/Intern-Proj-1/test_data.csv"
+    my_path = "/home/adam/github/Intern-Proj-1/features-v1.csv"
     df.to_csv(my_path, index=False)
     print(f"\nData available at {my_path}\n")
     breakpoint()
