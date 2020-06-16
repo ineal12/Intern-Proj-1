@@ -1,6 +1,6 @@
 # Python 3.7.7
 # adam note:
-#   This script currently exports regional data features only from 2017.
+#   This script has been modified from its original state to work with other GeoFRED data.
 #
 #   For quickstart use, jump to 'def main' and add any additional Series IDs of interest.
 #   Then, jump to 'my_path' and change that to a convenient location on your computer.
@@ -107,8 +107,8 @@ def pull_data_from_geodb(geodb, sids):
 
     Returns: tuple[pd.DataFrame] of the form (df_annual, df_month)
     """
-    cutoff_start = pd.to_datetime('2009-01-01').date()  # start after mortgage crisis
-    cutoff_end = pd.to_datetime('2017-12-31').date()  # last 'day' we have for hpi
+    # cutoff_start = pd.to_datetime('2009-01-01').date()  # start after mortgage crisis
+    # cutoff_end = pd.to_datetime('2017-12-31').date()  # last 'day' we have for hpi
 
     df_a = pd.DataFrame()  # for annual features
     df_m = pd.DataFrame()  # for monthly features
@@ -124,25 +124,25 @@ def pull_data_from_geodb(geodb, sids):
         for col in ['min_date', 'max_date']:
             meta[col] = pd.to_datetime(meta[col]).date()
 
-        # ensures min date isn't before cutoff start date
-        if meta['min_date'] < cutoff_start:
-            meta['min_date'] = cutoff_start
-        # if min date starts after Jan 01, change min date to Jan 01 of the 
-        # next year as this will remove potential for seasonal bias during annualization
-        elif meta['min_date'] > pd.to_datetime(str(meta['min_date'].year) + "-01-01").date():
-            meta['min_date'] = pd.to_datetime(str(meta['min_date'].year + 1) + "-01-01").date()
+        # # ensures min date isn't before cutoff start date
+        # if meta['min_date'] < cutoff_start:
+        #     meta['min_date'] = cutoff_start
+        # # if min date starts after Jan 01, change min date to Jan 01 of the 
+        # # next year as this will remove potential for seasonal bias during annualization
+        # elif meta['min_date'] > pd.to_datetime(str(meta['min_date'].year) + "-01-01").date():
+        #     meta['min_date'] = pd.to_datetime(str(meta['min_date'].year + 1) + "-01-01").date()
 
-        # ensures max date isn't after cutoff end date
-        if meta['max_date'] > cutoff_end:
-            if meta['frequency'] == 'a':
-                meta['max_date'] = pd.to_datetime('2017-01-01').date()
-            else:
-                meta['max_date'] = cutoff_end
+        # # ensures max date isn't after cutoff end date
+        # if meta['max_date'] > cutoff_end:
+        #     if meta['frequency'] == 'a':
+        #         meta['max_date'] = pd.to_datetime('2017-01-01').date()
+        #     else:
+        #         meta['max_date'] = cutoff_end
 
-        # checkdate!
-        if meta['max_date'] < meta['min_date']:
-            print(f"  > ALERT: NOT ENOUGH DATA, REMOVING {sid}...")
-            continue
+        # # checkdate!
+        # if meta['max_date'] < meta['min_date']:
+        #     print(f"  > ALERT: NOT ENOUGH DATA, REMOVING {sid}...")
+        #     continue
 
         print("  > Pulling dataframe...")
         data = geodb['data'](
@@ -176,51 +176,33 @@ def main():
     api_key = "f125f4c130e61d9f4ad5874aadfe07ff"
     geodb = dpf.data(api_key).geo
 
-    # TODO: add all the Series IDs you want to this list
+    # equifax subprime data goes through 2020, and is quarterly
+    # all annual features, no monthly yet
+    # most of our features goes through 2018
     series_ids = [
-        "ATNHPIUS37081A",  # this is All-Transactions House Price Index
-        "NCGUIL1URN",
-        "PCPI37081",
-        "MHICA06037A052NCEN",
-        "MELIPRCOUNTY6059",
-        "SUSCCOUNTY48113",
-        "PRIINCCOU54037",
-        "TOTLISCOUMM39049",
-        "MWACL06037",
-        "DESCMSA18140",
-        "S1701ACS024510",
-        "PENLISCOU51061",
-        "PENRATYY51153",
-        "HORACOUNTY54037",
-        "MELIPRCOUNTY6059",
-        "NIHHRACOUNTY51061",
-        "HOWNRATEACS006073",
-        "FLHVAC",
-        "ACTLISCOU6085",
-        "MELIPRCOUNTY6059",
-        "MEDAONMACOUNTY48471",
-        "MEDSQUFEE14460",
-        "NEWLISCOUMM48113",
-        "GDPALL12089",  # All industry GDP
-        "HC01ESTVC1712089",  # Bachelor’s Degree or Higher
-        "PI36059",  # Personal Income
-        "EQFXSUBPRIME012089",  # Sub Prime Credit population (quarterly)
-        "2020RATIO036059",  # Income Inequality
-        "S1101SPHOUSE036059",  # Single parent households with children (annual)
-        "DP04ACS036059",  # Burdened households (look this up)
+        "EQFXSUBPRIME036061",  # equifax subprime
+        "GCT1501WV",  # high school graduate or higher (percent)
+        "PPAAKY21217A156NCEN",  # Estimated Percent of People of All Ages in Poverty
+        "GDPALL17031",  # GDP all industries
+        "S1701ACS024510",  # percent of population below the poverty level
+        "CBR21189KYA647NCEN",  # SNAP Benefits recipients
+        "RACEDISPARITY041047",  # Segregation/Integration
+        "DP04ACS031031",  # Burdened Households (>30% of their income on their house)
+        "B14005DCYACS001073",  # Disconnected Youth , 16-24 not working or in school
+        "S1101SPHOUSE006073",  # single parent household
     ]
 
     df_a, df_m = pull_data_from_geodb(geodb, series_ids)
 
     df = df_a.append(Wrangler.annualize(df_m))
     df = Wrangler.long_to_wide(df)
-    df = Wrangler.reduce_to_hpi(df)
+    # df = Wrangler.reduce_to_hpi(df)
     # df = Wrangler.mean_replace(df, threshold=0.85)
     # df = Wrangler.normalize_features(df)
 
     # TODO: alter this path for your local env
     print("Exporting clean data...")
-    my_path = "/home/adam/Documents/truist_2020/hackathon/features_2017.csv"
+    my_path = "/home/adam/github/Intern-Proj-1/test_data.csv"
     df.to_csv(my_path, index=False)
     print(f"\nData available at {my_path}\n")
     breakpoint()
