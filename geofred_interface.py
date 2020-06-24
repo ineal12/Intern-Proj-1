@@ -37,7 +37,7 @@ class Wrangler(object):
         return tmp.reset_index()
 
     @staticmethod
-    def replace_nan(dataframe, median=False):
+    def mean_replace_nan(dataframe, median=False):
         """Replaces remaining NaNs with average/median values.
 
         Args:
@@ -109,20 +109,19 @@ class Wrangler(object):
         return tmp
 
 
-def pull_data_from_geodb(geodb, sids, verbose=True):
+def pull_data_from_geodb(sids, verbose=True):
     """Gets data from the GeoFRED database.
 
     Pulls all the data into two dataframes based
     on whether the features are annual or monthly.
 
     Args:
-        geodb: database object from datapungi_fed
         sids (list[str]): all of the series ids for the features we want
 
     Returns: tuple[pd.DataFrame] of the form (df_annual, df_month)
     """
-    # cutoff_start = pd.to_datetime('2009-01-01').date()  # start after mortgage crisis
-    # cutoff_end = pd.to_datetime('2017-12-31').date()  # last 'day' we have for hpi
+    api_key = "f125f4c130e61d9f4ad5874aadfe07ff"
+    geodb = dpf.data(api_key).geo
 
     df_a = pd.DataFrame()  # for annual features
     df_m = pd.DataFrame()  # for monthly features
@@ -160,7 +159,6 @@ def pull_data_from_geodb(geodb, sids, verbose=True):
             print(f"  > Frequency: {meta['frequency']}")
             print(f"  > Region type: {meta['region_type']}")
 
-
         print(f"  > Appending to df_{meta['frequency']}...")
         if meta['frequency'] == 'a':
             df_a = df_a.append(data)
@@ -175,9 +173,6 @@ def pull_data_from_geodb(geodb, sids, verbose=True):
 
 
 def main():
-    api_key = "f125f4c130e61d9f4ad5874aadfe07ff"
-    geodb = dpf.data(api_key).geo
-
     # equifax subprime data goes through 2020, and is quarterly
     # all annual features, no monthly yet
     # most of our features goes through 2018
@@ -185,19 +180,47 @@ def main():
         "EQFXSUBPRIME036061",  # equifax subprime
         "GDPALL17031",  # GDP all industries
         "PPAAKY21217A156NCEN",  # Estimated Percent of People of All Ages in Poverty
+        "2020RATIO006037", # income inequality
         "CBR21189KYA647NCEN",  # SNAP Benefits recipients
-        "RACEDISPARITY041047",  # Segregation/Integration
-        "DP04ACS031031",  # Burdened Households (>30% of their income on their house)
-        "B14005DCYACS001073",  # Disconnected Youth , 16-24 not working or in school
-        "S1101SPHOUSE006073",  # single parent household
+        "RACEDISPARITY041047", # Segregation/Integration
+        "DP04ACS031031", # Burdened Households (>30% of their income on their house)
+        "B14005DCYACS001073", # Disconnected Youth , 16-24 not working or in school
+        "S1101SPHOUSE006073", # single parent household
+        "LAUCN131350000000006A", # Civilian Labor Force
+        "LAUST220000000000005", # employed persons
+        # By State
+        "MEHOINUSGAA672N", # Real Median Household Income 
+        "GCT1501GA", # HS graduates 
+        "PPAACA06000A156NCEN", # Poverty all ages
+        "SMS13000006561000001",  # all employees: educational services
+        "SMU13000007072200001SA",  # all employees, food services and drinking places
+        # start here
+        "VAPCENDURG",  # nondurable goods (left off here)
+        "PCHEXMOR41A647NCEN",  # poverty, tax exemptions
+        "GARGSP",  # real gross gdp
+        "GARVAC", # rental vacancy rate    
+        "GAEDHLTHSOCASSNGSP", # Gross Domestic Product by Industry: Private Industries: Educational Services, Health Care, and Social Assistance
+        "GAHOWN",  # Homeownership rate
+        "GAHVAC",  # homevacancy rate
+        "GAICLAIMS",  # Initial Claims in Georgia
+        "GANIM",  # Net Interest Margin for Commercial Banks
+        "GARPIPC",  # Real per capita personal income
+        "GAMPRPIPC",  # real per capita personal income: metro
+        "GANMPRPIPC",  # real per capita personal income: nonmetro
+        "GAPOP",  # resident population
+        "GAPCEPCFOOD",  # Per Capita Personal Consumption Expenditures: Nondurable Goods: Food and Beverages Purchased for Off-Premises Consumption
+        "SMU13000006562200001SA",  # All Employees: Health Care: Hospitals
+        "BUSAPPWNSAGA",  # Business Applications
     ]
 
-    df_a, df_m = pull_data_from_geodb(geodb, series_ids)
+    df_a, df_m = pull_data_from_geodb(series_ids)
+
+    breakpoint()
 
     df = df_a.append(Wrangler.annualize(df_m))
     df = Wrangler.long_to_wide(df)
     df = Wrangler.drop_years(df, start=2010, end=2018)
-    df = Wrangler.replace_nan(df, median=
+    df = Wrangler.mean_replace_nan(df, median=
         ['Gross Domestic Product: All Industries', 'SNAP Benefits Recipients']
     )
     df = Wrangler.normalize_features(df)
@@ -206,10 +229,11 @@ def main():
     my_path = "/home/adam/github/Intern-Proj-1/features-v1.csv"
     df.to_csv(my_path, index=False)
     print(f"\nData available at {my_path}\n")
-    breakpoint()
 
     return df
 
 
 if __name__ == "__main__":
     main()
+    breakpoint()
+
